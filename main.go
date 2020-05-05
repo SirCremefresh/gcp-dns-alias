@@ -19,7 +19,6 @@ import (
 type Domain struct {
 	domain         string
 	topLevelDomain string
-	ip             string
 }
 
 var projectId, credentialsJSON, cName string
@@ -48,35 +47,13 @@ func main() {
 }
 
 func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
-	var wrongDomains []Domain
 
 	cNameIp, err := lookupIP(cName)
 	if err != nil {
 		log.Fatal("could not get IP for cName", err)
 	}
 
-	for _, domain := range domains {
-		domain = strings.TrimSpace(domain)
-		lookupDomain := getLookupDomain(domain)
-
-		domainIp, err := lookupIP(lookupDomain)
-		if err != nil {
-			log.Fatal("Could not get IP for domain: "+domain, err)
-		}
-
-		if cNameIp == domainIp == false {
-			topLevelDomain, err := getToplevelDomain(domain)
-			if err != nil {
-				log.Fatalf("Could not get top level of domain. domain: %s", domain)
-			}
-
-			wrongDomains = append(wrongDomains, Domain{
-				domain:         domain,
-				topLevelDomain: topLevelDomain,
-				ip:             domainIp,
-			})
-		}
-	}
+	wrongDomains := getWrongDomains(cNameIp)
 
 	if len(wrongDomains) <= 0 {
 		fmt.Printf("No wrong Domains")
@@ -95,41 +72,73 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 	if err != nil {
 		log.Fatal("could not get managed zones ", err)
 	}
+
 	for _, managedZone := range getManagedZones.ManagedZones {
-		managedZoneId := strconv.FormatUint(managedZone.Id, 10)
-		resourceDomain, changeDnsErr := getToplevelDomain(managedZone.DnsName)
-		if changeDnsErr != nil {
-			log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
-		}
-
-		currentWrongDomains, currentHasWrongDomains := getCurrentWrongDomains(wrongDomains, resourceDomain)
-
-		if currentHasWrongDomains == false {
-			continue
-		}
-
-		resourceRecordSets, changeDnsErr := service.ResourceRecordSets.List(projectId, managedZoneId).Do()
-		if changeDnsErr != nil {
-			log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
-		}
-
-		additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIp)
-
-		if len(additions) <= 0 {
-			continue
-		}
-
-		dnsChange := &dns.Change{
-			Additions: additions,
-			Deletions: deletions,
-		}
-
-		_, err = service.Changes.Create(projectId, managedZoneId, dnsChange).Do()
+		err := correctManagedZone(managedZone, wrongDomains, service, cNameIp)
 		if err != nil {
 			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
 		}
 	}
 	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v", wrongDomains)
+}
+
+func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, service *dns.Service, cNameIp string) error {
+	managedZoneId := strconv.FormatUint(managedZone.Id, 10)
+	resourceDomain, changeDnsErr := getToplevelDomain(managedZone.DnsName)
+	if changeDnsErr != nil {
+		log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
+	}
+
+	currentWrongDomains, currentHasWrongDomains := getCurrentWrongDomains(wrongDomains, resourceDomain)
+
+	if currentHasWrongDomains == false {
+		return nil
+	}
+
+	resourceRecordSets, changeDnsErr := service.ResourceRecordSets.List(projectId, managedZoneId).Do()
+	if changeDnsErr != nil {
+		log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
+	}
+
+	additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIp)
+
+	if len(additions) <= 0 {
+		return nil
+	}
+
+	dnsChange := &dns.Change{
+		Additions: additions,
+		Deletions: deletions,
+	}
+
+	_, err := service.Changes.Create(projectId, managedZoneId, dnsChange).Do()
+	return err
+}
+
+func getWrongDomains(cNameIp string) []Domain {
+	var wrongDomains []Domain
+	for _, domain := range domains {
+		domain = strings.TrimSpace(domain)
+		lookupDomain := getLookupDomain(domain)
+
+		domainIp, err := lookupIP(lookupDomain)
+		if err != nil {
+			log.Fatal("Could not get IP for domain: "+domain, err)
+		}
+
+		if cNameIp == domainIp == false {
+			topLevelDomain, err := getToplevelDomain(domain)
+			if err != nil {
+				log.Fatalf("Could not get top level of domain. domain: %s", domain)
+			}
+
+			wrongDomains = append(wrongDomains, Domain{
+				domain:         domain,
+				topLevelDomain: topLevelDomain,
+			})
+		}
+	}
+	return wrongDomains
 }
 
 func getAdditionsAndDeletions(resourceRecordSets *dns.ResourceRecordSetsListResponse, currentWrongDomains map[string]bool, cNameIp string) ([]*dns.ResourceRecordSet, []*dns.ResourceRecordSet) {
