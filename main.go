@@ -9,6 +9,7 @@ import (
 	"google.golang.org/api/option"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -21,17 +22,28 @@ type Domain struct {
 	ip             string
 }
 
+var projectId, credentialsJSON, cName string
+var domains []string
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		fmt.Printf("Error loading .env file. %v\n", err)
 	}
 
-	projectId := getEnvOrFail("PROJECT_ID")
-	credentialsJSON := getEnvOrFail("CREDENTIALS_JSON")
-	cName := strings.TrimSpace(getEnvOrFail("CNAME"))
-	domains := strings.Fields(getEnvOrFail("DOMAINS"))
+	projectId = getEnvOrFail("PROJECT_ID")
+	credentialsJSON = getEnvOrFail("CREDENTIALS_JSON")
+	cName = strings.TrimSpace(getEnvOrFail("CNAME"))
+	domains = strings.Fields(getEnvOrFail("DOMAINS"))
 
+	http.HandleFunc("/check-and-refresh-entries", CheckAndRefreshEntries)
+	fmt.Printf("Starting server on port :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		fmt.Printf("Error Listening on Port. %v\n", err)
+	}
+}
+
+func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 	var wrongDomains []Domain
 
 	cNameIp, err := lookupIP(cName)
@@ -64,7 +76,8 @@ func main() {
 
 	if len(wrongDomains) <= 0 {
 		fmt.Printf("No wrong Domains")
-		os.Exit(0)
+		_, _ = fmt.Fprintf(w, "No Wrong Domains")
+		return
 	}
 
 	ctx := context.Background()
@@ -155,6 +168,7 @@ func main() {
 			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
 		}
 	}
+	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v", wrongDomains)
 }
 
 func getEnvOrFail(envName string) string {
