@@ -98,15 +98,7 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 			log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
 		}
 
-		currentWrongDomains := make(map[string]bool)
-		currentHasWrongDomains := false
-
-		for _, wrongDomain := range wrongDomains {
-			if wrongDomain.topLevelDomain == resourceDomain {
-				currentHasWrongDomains = true
-				currentWrongDomains[wrongDomain.domain] = true
-			}
-		}
+		currentWrongDomains, currentHasWrongDomains := getCurrentWrongDomains(wrongDomains, resourceDomain)
 
 		if currentHasWrongDomains == false {
 			continue
@@ -117,42 +109,7 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 			log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
 		}
 
-		var additions []*dns.ResourceRecordSet
-		{
-		}
-		var deletions []*dns.ResourceRecordSet
-		{
-		}
-
-		for _, rSet := range resourceRecordSets.Rrsets {
-			if rSet.Type != "A" {
-				continue
-			}
-			rSetDomain := strings.TrimSuffix(rSet.Name, ".")
-			rSetIp := rSet.Rrdatas[0]
-			// if ip was already changed in the config but not propagated
-			if currentWrongDomains[rSetDomain] == false || cNameIp == rSetIp {
-				continue
-			}
-			fmt.Println(rSetDomain)
-
-			additions = append(additions, &dns.ResourceRecordSet{
-				Name: rSetDomain + ".",
-				Rrdatas: []string{
-					cNameIp,
-				},
-				Ttl:  300,
-				Type: "A",
-			})
-			deletions = append(deletions, &dns.ResourceRecordSet{
-				Name: rSetDomain + ".",
-				Rrdatas: []string{
-					rSetIp,
-				},
-				Ttl:  300,
-				Type: "A",
-			})
-		}
+		additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIp)
 
 		if len(additions) <= 0 {
 			continue
@@ -169,6 +126,54 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v", wrongDomains)
+}
+
+func getAdditionsAndDeletions(resourceRecordSets *dns.ResourceRecordSetsListResponse, currentWrongDomains map[string]bool, cNameIp string) ([]*dns.ResourceRecordSet, []*dns.ResourceRecordSet) {
+	var additions []*dns.ResourceRecordSet
+	{
+	}
+	var deletions []*dns.ResourceRecordSet
+	{
+	}
+
+	for _, rSet := range resourceRecordSets.Rrsets {
+		if rSet.Type != "A" {
+			continue
+		}
+		rSetDomain := strings.TrimSuffix(rSet.Name, ".")
+		rSetIp := rSet.Rrdatas[0]
+		// if ip was already changed in the config but not propagated
+		if currentWrongDomains[rSetDomain] == false || cNameIp == rSetIp {
+			continue
+		}
+
+		additions = append(additions, generateResourceRecordSet(rSetDomain, cNameIp))
+		deletions = append(deletions, generateResourceRecordSet(rSetDomain, rSetIp))
+	}
+	return additions, deletions
+}
+
+func getCurrentWrongDomains(wrongDomains []Domain, resourceDomain string) (map[string]bool, bool) {
+	currentWrongDomains := make(map[string]bool)
+	currentHasWrongDomains := false
+	for _, wrongDomain := range wrongDomains {
+		if wrongDomain.topLevelDomain == resourceDomain {
+			currentHasWrongDomains = true
+			currentWrongDomains[wrongDomain.domain] = true
+		}
+	}
+	return currentWrongDomains, currentHasWrongDomains
+}
+
+func generateResourceRecordSet(domain string, ip string) *dns.ResourceRecordSet {
+	return &dns.ResourceRecordSet{
+		Name: domain + ".",
+		Rrdatas: []string{
+			ip,
+		},
+		Ttl:  300,
+		Type: "A",
+	}
 }
 
 func getEnvOrFail(envName string) string {
