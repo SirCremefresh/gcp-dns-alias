@@ -24,13 +24,13 @@ type Domain struct {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file", err)
+		fmt.Printf("Error loading .env file. %v\n", err)
 	}
 
-	projectId := os.Getenv("PROJECT_ID")
-	credentialsJSON := os.Getenv("CREDENTIALS_JSON")
-	cName := strings.TrimSpace(os.Getenv("CNAME"))
-	domains := strings.Fields(os.Getenv("DOMAINS"))
+	projectId := getEnvOrFail("PROJECT_ID")
+	credentialsJSON := getEnvOrFail("CREDENTIALS_JSON")
+	cName := strings.TrimSpace(getEnvOrFail("CNAME"))
+	domains := strings.Fields(getEnvOrFail("DOMAINS"))
 
 	var wrongDomains []Domain
 
@@ -155,6 +155,14 @@ func main() {
 			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
 		}
 	}
+}
+
+func getEnvOrFail(envName string) string {
+	envValue, ok := os.LookupEnv(envName)
+	if ok == false {
+		log.Fatalf("Could not load enviroment variable. EnvName: %s\n", envName)
+	}
+	return envValue
 }
 
 func getLookupDomain(domain string) string {
