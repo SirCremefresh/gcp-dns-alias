@@ -41,7 +41,7 @@ func main() {
 	}
 
 	http.HandleFunc("/check-and-refresh-entries", CheckAndRefreshEntries)
-	fmt.Printf("Starting server on port :%s", port)
+	fmt.Printf("Starting server on port :%s\n", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		fmt.Printf("Error Listening on Port. %v\n", err)
 	}
