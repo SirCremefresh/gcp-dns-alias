@@ -35,10 +35,14 @@ func main() {
 	credentialsJSON = getEnvOrFail("CREDENTIALS_JSON")
 	cName = strings.TrimSpace(getEnvOrFail("CNAME"))
 	domains = strings.Fields(getEnvOrFail("DOMAINS"))
+	port, ok := os.LookupEnv("PORT")
+	if ok == false {
+		port = "8080"
+	}
 
 	http.HandleFunc("/check-and-refresh-entries", CheckAndRefreshEntries)
-	fmt.Printf("Starting server on port :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	fmt.Printf("Starting server on port :%s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		fmt.Printf("Error Listening on Port. %v\n", err)
 	}
 }
