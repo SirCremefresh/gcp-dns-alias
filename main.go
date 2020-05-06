@@ -48,6 +48,7 @@ func main() {
 }
 
 func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
+	fmt.Println("Received request to check and refresh Entries")
 
 	cNameIp, err := lookupIP(cName)
 	if err != nil {
