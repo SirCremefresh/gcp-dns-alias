@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Domain struct {
@@ -220,7 +221,8 @@ func lookupIP(domain string) (string, error) {
 		if err == nil && len(lookedUpIPs) > 0 {
 			return lookedUpIPs[0].String(), nil
 		}
-		fmt.Printf("Failed to lookup ip for domain: %s, retryCount: %d", domain, retry)
+		fmt.Printf("Failed to lookup ip for domain: %s, retryCount: %d, err: %v", domain, retry, err)
+		time.Sleep(100 * time.Millisecond)
 	}
 	return "", errors.New("Could not get IP for domain: " + domain)
 
