@@ -51,13 +51,13 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 
 	cNameIp, err := lookupIP(cName)
 	if err != nil {
-		log.Fatal("could not get IP for cName", err)
+		log.Fatalf("could not get IP for cName. err: %v\n", err)
 	}
 
 	wrongDomains := getWrongDomains(cNameIp)
 
 	if len(wrongDomains) <= 0 {
-		fmt.Printf("No wrong Domains")
+		fmt.Printf("No wrong Domains\n")
 		_, _ = fmt.Fprintf(w, "No Wrong Domains")
 		return
 	}
@@ -66,28 +66,28 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 	service, err := dns.NewService(ctx, option.WithCredentialsJSON([]byte(credentialsJSON)))
 
 	if err != nil {
-		log.Fatal("could not create dns service", err)
+		log.Fatalln("could not create dns service", err)
 	}
 
 	getManagedZones, err := service.ManagedZones.List(projectId).Do()
 	if err != nil {
-		log.Fatal("could not get managed zones ", err)
+		log.Fatalln("could not get managed zones ", err)
 	}
 
 	for _, managedZone := range getManagedZones.ManagedZones {
 		err := correctManagedZone(managedZone, wrongDomains, service, cNameIp)
 		if err != nil {
-			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
+			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
 		}
 	}
-	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v", wrongDomains)
+	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v\n", wrongDomains)
 }
 
 func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, service *dns.Service, cNameIp string) error {
 	managedZoneId := strconv.FormatUint(managedZone.Id, 10)
 	resourceDomain, changeDnsErr := getToplevelDomain(managedZone.DnsName)
 	if changeDnsErr != nil {
-		log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
+		log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
 	}
 
 	currentWrongDomains, currentHasWrongDomains := getCurrentWrongDomains(wrongDomains, resourceDomain)
@@ -98,7 +98,7 @@ func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, ser
 
 	resourceRecordSets, changeDnsErr := service.ResourceRecordSets.List(projectId, managedZoneId).Do()
 	if changeDnsErr != nil {
-		log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d", managedZone.DnsName, managedZone.Id)
+		log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
 	}
 
 	additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIp)
@@ -124,13 +124,13 @@ func getWrongDomains(cNameIp string) []Domain {
 
 		domainIp, err := lookupIP(lookupDomain)
 		if err != nil {
-			log.Fatal("Could not get IP for domain: "+domain, err)
+			log.Fatalf("Could not get IP for domain: %s. err: %v\n", domain, err)
 		}
 
 		if cNameIp == domainIp == false {
 			topLevelDomain, err := getToplevelDomain(domain)
 			if err != nil {
-				log.Fatalf("Could not get top level of domain. domain: %s", domain)
+				log.Fatalf("Could not get top level of domain. domain: %s\n", domain)
 			}
 
 			wrongDomains = append(wrongDomains, Domain{
@@ -221,7 +221,7 @@ func lookupIP(domain string) (string, error) {
 		if err == nil && len(lookedUpIPs) > 0 {
 			return lookedUpIPs[0].String(), nil
 		}
-		fmt.Printf("Failed to lookup ip for domain: %s, retryCount: %d, err: %v", domain, retry, err)
+		fmt.Printf("Failed to lookup ip for domain: %s, retryCount: %d, err: %v\n", domain, retry, err)
 		time.Sleep(100 * time.Millisecond)
 	}
 	return "", errors.New("Could not get IP for domain: " + domain)
