@@ -217,13 +217,13 @@ func getToplevelDomain(domain string) (string, error) {
 }
 
 func lookupIP(domain string) (string, error) {
-	for retry := 0; retry < 5; retry++ {
+	for retry := 0; retry < 12; retry++ {
 		lookedUpIPs, err := net.LookupIP(domain)
 		if err == nil && len(lookedUpIPs) > 0 {
 			return lookedUpIPs[0].String(), nil
 		}
 		fmt.Printf("Failed to lookup ip for domain: %s, retryCount: %d, err: %v\n", domain, retry, err)
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	return "", errors.New("Could not get IP for domain: " + domain)
 
