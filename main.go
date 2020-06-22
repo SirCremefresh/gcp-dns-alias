@@ -219,7 +219,7 @@ func getToplevelDomain(domain string) (string, error) {
 }
 
 func lookupIP(domain string) (string, error) {
-	for retry := 0; retry < 24; retry++ {
+	for retry := 0; retry < 32; retry++ {
 		lookedUpIPs, err := net.LookupIP(domain)
 		if err == nil && len(lookedUpIPs) > 0 {
 			return lookedUpIPs[0].String(), nil
