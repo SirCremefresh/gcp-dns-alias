@@ -17,12 +17,13 @@ import (
 	"time"
 )
 
+// Domain containes a domain and its coresponding topLevelDomain
 type Domain struct {
 	domain         string
 	topLevelDomain string
 }
 
-var projectId, credentialsJSON, cName string
+var projectID, credentialsJSON, cName string
 var domains []string
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 		fmt.Printf("Error loading .env file. %v\n", err)
 	}
 
-	projectId = getEnvOrFail("PROJECT_ID")
+	projectID = getEnvOrFail("PROJECT_ID")
 	credentialsJSON = getEnvOrFail("CREDENTIALS_JSON")
 	cName = strings.TrimSpace(getEnvOrFail("CNAME"))
 	domains = strings.Fields(getEnvOrFail("DOMAINS"))
@@ -47,15 +48,16 @@ func main() {
 	}
 }
 
+// CheckAndRefreshEntries is the main entrypoint, First lookes up all Ips and then fixes the wrong ones.
 func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 	fmt.Println("Received request to check and refresh Entries")
 
-	cNameIp, err := lookupIP(cName)
+	cNameIP, err := lookupIP(cName)
 	if err != nil {
 		log.Fatalf("could not get IP for cName. err: %v\n", err)
 	}
 
-	wrongDomains := getWrongDomains(cNameIp)
+	wrongDomains := getWrongDomains(cNameIP)
 
 	if len(wrongDomains) <= 0 {
 		fmt.Printf("No wrong Domains\n")
@@ -70,25 +72,25 @@ func CheckAndRefreshEntries(w http.ResponseWriter, _ *http.Request) {
 		log.Fatalln("could not create dns service", err)
 	}
 
-	getManagedZones, err := service.ManagedZones.List(projectId).Do()
+	getManagedZones, err := service.ManagedZones.List(projectID).Do()
 	if err != nil {
 		log.Fatalln("could not get managed zones ", err)
 	}
 
 	for _, managedZone := range getManagedZones.ManagedZones {
-		err := correctManagedZone(managedZone, wrongDomains, service, cNameIp)
+		err := correctManagedZone(managedZone, wrongDomains, service, cNameIP)
 		if err != nil {
-			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
+			log.Fatalf("cloud not macke change to dns. ManagedZoneDns: %s, managedZoneID: %d\n", managedZone.DnsName, managedZone.Id)
 		}
 	}
 	_, _ = fmt.Fprintf(w, "Fixed wrong domain. wrongDomains: %v\n", wrongDomains)
 }
 
-func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, service *dns.Service, cNameIp string) error {
-	managedZoneId := strconv.FormatUint(managedZone.Id, 10)
-	resourceDomain, changeDnsErr := getToplevelDomain(managedZone.DnsName)
-	if changeDnsErr != nil {
-		log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
+func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, service *dns.Service, cNameIP string) error {
+	managedZoneID := strconv.FormatUint(managedZone.Id, 10)
+	resourceDomain, changeDNSErr := getToplevelDomain(managedZone.DnsName)
+	if changeDNSErr != nil {
+		log.Fatalf("could not get resouceDomain. ManagedZoneDns: %s, managedZoneID: %d\n", managedZone.DnsName, managedZone.Id)
 	}
 
 	currentWrongDomains, currentHasWrongDomains := getCurrentWrongDomains(wrongDomains, resourceDomain)
@@ -97,12 +99,12 @@ func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, ser
 		return nil
 	}
 
-	resourceRecordSets, changeDnsErr := service.ResourceRecordSets.List(projectId, managedZoneId).Do()
-	if changeDnsErr != nil {
-		log.Fatalf("could not get resource record set. ManagedZoneDns: %s, ManagedZoneId: %d\n", managedZone.DnsName, managedZone.Id)
+	resourceRecordSets, changeDNSErr := service.ResourceRecordSets.List(projectID, managedZoneID).Do()
+	if changeDNSErr != nil {
+		log.Fatalf("could not get resource record set. ManagedZoneDns: %s, managedZoneID: %d\n", managedZone.DnsName, managedZone.Id)
 	}
 
-	additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIp)
+	additions, deletions := getAdditionsAndDeletions(resourceRecordSets, currentWrongDomains, cNameIP)
 
 	if len(additions) <= 0 {
 		return nil
@@ -113,22 +115,22 @@ func correctManagedZone(managedZone *dns.ManagedZone, wrongDomains []Domain, ser
 		Deletions: deletions,
 	}
 
-	_, err := service.Changes.Create(projectId, managedZoneId, dnsChange).Do()
+	_, err := service.Changes.Create(projectID, managedZoneID, dnsChange).Do()
 	return err
 }
 
-func getWrongDomains(cNameIp string) []Domain {
+func getWrongDomains(cNameIP string) []Domain {
 	var wrongDomains []Domain
 	for _, domain := range domains {
 		domain = strings.TrimSpace(domain)
 		lookupDomain := getLookupDomain(domain)
 
-		domainIp, err := lookupIP(lookupDomain)
+		domainIP, err := lookupIP(lookupDomain)
 		if err != nil {
 			log.Fatalf("Could not get IP for domain: %s. err: %v\n", domain, err)
 		}
 
-		if cNameIp == domainIp == false {
+		if cNameIP == domainIP == false {
 			topLevelDomain, err := getToplevelDomain(domain)
 			if err != nil {
 				log.Fatalf("Could not get top level of domain. domain: %s\n", domain)
@@ -143,7 +145,7 @@ func getWrongDomains(cNameIp string) []Domain {
 	return wrongDomains
 }
 
-func getAdditionsAndDeletions(resourceRecordSets *dns.ResourceRecordSetsListResponse, currentWrongDomains map[string]bool, cNameIp string) ([]*dns.ResourceRecordSet, []*dns.ResourceRecordSet) {
+func getAdditionsAndDeletions(resourceRecordSets *dns.ResourceRecordSetsListResponse, currentWrongDomains map[string]bool, cNameIP string) ([]*dns.ResourceRecordSet, []*dns.ResourceRecordSet) {
 	var additions []*dns.ResourceRecordSet
 	{
 	}
@@ -156,14 +158,14 @@ func getAdditionsAndDeletions(resourceRecordSets *dns.ResourceRecordSetsListResp
 			continue
 		}
 		rSetDomain := strings.TrimSuffix(rSet.Name, ".")
-		rSetIp := rSet.Rrdatas[0]
+		rSetIP := rSet.Rrdatas[0]
 		// if ip was already changed in the config but not propagated
-		if currentWrongDomains[rSetDomain] == false || cNameIp == rSetIp {
+		if currentWrongDomains[rSetDomain] == false || cNameIP == rSetIP {
 			continue
 		}
 
-		additions = append(additions, generateResourceRecordSet(rSetDomain, cNameIp))
-		deletions = append(deletions, generateResourceRecordSet(rSetDomain, rSetIp))
+		additions = append(additions, generateResourceRecordSet(rSetDomain, cNameIP))
+		deletions = append(deletions, generateResourceRecordSet(rSetDomain, rSetIP))
 	}
 	return additions, deletions
 }
